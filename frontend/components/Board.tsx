@@ -13,13 +13,14 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useBoard } from "@/context/BoardContext";
+import * as api from "@/lib/api";
 import { Column } from "./Column";
 import { AddCardModal } from "./AddCardModal";
 import { CardDetailModal } from "./CardDetailModal";
 import type { Card as CardType } from "@/lib/types";
 
 export function Board() {
-  const { state, dispatch } = useBoard();
+  const { state, dispatch, loading } = useBoard();
   const [activeCard, setActiveCard] = useState<CardType | null>(null);
   const [addCardColumnId, setAddCardColumnId] = useState<string | null>(null);
   const [selectedCard, setSelectedCard] = useState<CardType | null>(null);
@@ -37,7 +38,7 @@ export function Board() {
     setActiveCard(state.cards[String(event.active.id)] ?? null);
   }
 
-  function handleDragEnd(event: DragEndEvent) {
+  async function handleDragEnd(event: DragEndEvent) {
     setActiveCard(null);
     const { active, over } = event;
     if (!over) return;
@@ -50,30 +51,28 @@ export function Board() {
     if (!sourceColumnId) return;
 
     const overColumn = state.columns.find((column) => column.id === overId);
-    if (overColumn) {
-      dispatch({
-        type: "MOVE_CARD",
-        cardId,
-        sourceColumnId,
-        targetColumnId: overColumn.id,
-        targetIndex: overColumn.cardIds.length,
-      });
-      return;
-    }
+    const targetColumnId = overColumn
+      ? overColumn.id
+      : state.columns.find((column) => column.cardIds.includes(overId))?.id;
+    if (!targetColumnId) return;
 
-    const targetColumn = state.columns.find((column) => column.cardIds.includes(overId));
-    if (!targetColumn) return;
+    const targetIndex = overColumn
+      ? overColumn.cardIds.length
+      : state.columns.find((column) => column.id === targetColumnId)!.cardIds.indexOf(overId);
 
-    dispatch({
-      type: "MOVE_CARD",
-      cardId,
-      sourceColumnId,
-      targetColumnId: targetColumn.id,
-      targetIndex: targetColumn.cardIds.indexOf(overId),
-    });
+    const board = await api.moveCard(cardId, targetColumnId, targetIndex);
+    dispatch({ type: "SET_BOARD", board });
   }
 
   const addCardColumn = state.columns.find((column) => column.id === addCardColumnId);
+
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <p className="text-sm text-gray-text">Loading board...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col">
@@ -94,7 +93,10 @@ export function Board() {
               cards={column.cardIds.map((id) => state.cards[id]).filter(Boolean)}
               onAddCard={setAddCardColumnId}
               onCardClick={setSelectedCard}
-              onRename={(columnId, title) => dispatch({ type: "RENAME_COLUMN", columnId, title })}
+              onRename={async (columnId, title) => {
+                await api.renameColumn(columnId, title);
+                dispatch({ type: "RENAME_COLUMN", columnId, title });
+              }}
             />
           ))}
         </div>
@@ -112,8 +114,9 @@ export function Board() {
         <AddCardModal
           columnTitle={addCardColumn.title}
           onClose={() => setAddCardColumnId(null)}
-          onSubmit={(title, details) => {
-            dispatch({ type: "ADD_CARD", columnId: addCardColumn.id, title, details });
+          onSubmit={async (title, details) => {
+            const card = await api.createCard(addCardColumn.id, title, details);
+            dispatch({ type: "ADD_CARD", columnId: addCardColumn.id, card });
             setAddCardColumnId(null);
           }}
         />
@@ -123,12 +126,14 @@ export function Board() {
         <CardDetailModal
           card={selectedCard}
           onClose={() => setSelectedCard(null)}
-          onSave={(title, details) => {
+          onSave={async (title, details) => {
+            await api.updateCard(selectedCard.id, title, details);
             dispatch({ type: "UPDATE_CARD", cardId: selectedCard.id, title, details });
             setSelectedCard(null);
           }}
-          onDelete={() => {
+          onDelete={async () => {
             const columnId = findColumnIdByCardId(selectedCard.id);
+            await api.deleteCard(selectedCard.id);
             if (columnId) {
               dispatch({ type: "DELETE_CARD", cardId: selectedCard.id, columnId });
             }

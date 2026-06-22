@@ -1,10 +1,11 @@
 "use client";
 
-import { createContext, useContext, useReducer, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useReducer, useState, type ReactNode } from "react";
 import type { BoardState, Card } from "@/lib/types";
-import { seedBoard } from "@/lib/seedData";
+import { getBoard } from "@/lib/api";
 
 export type BoardAction =
+  | { type: "SET_BOARD"; board: BoardState }
   | {
       type: "MOVE_CARD";
       cardId: string;
@@ -12,13 +13,18 @@ export type BoardAction =
       targetColumnId: string;
       targetIndex: number;
     }
-  | { type: "ADD_CARD"; columnId: string; title: string; details: string }
+  | { type: "ADD_CARD"; columnId: string; card: Card }
   | { type: "DELETE_CARD"; cardId: string; columnId: string }
   | { type: "RENAME_COLUMN"; columnId: string; title: string }
   | { type: "UPDATE_CARD"; cardId: string; title: string; details: string };
 
+const emptyBoard: BoardState = { columns: [], cards: {} };
+
 export function boardReducer(state: BoardState, action: BoardAction): BoardState {
   switch (action.type) {
+    case "SET_BOARD": {
+      return action.board;
+    }
     case "MOVE_CARD": {
       const { cardId, sourceColumnId, targetColumnId, targetIndex } = action;
       const columns = state.columns.map((column) => ({ ...column, cardIds: [...column.cardIds] }));
@@ -34,16 +40,15 @@ export function boardReducer(state: BoardState, action: BoardAction): BoardState
       return { ...state, columns };
     }
     case "ADD_CARD": {
-      const id = `card-${crypto.randomUUID()}`;
-      const newCard: Card = { id, title: action.title, details: action.details };
+      const { card } = action;
       const columns = state.columns.map((column) =>
         column.id === action.columnId
-          ? { ...column, cardIds: [...column.cardIds, id] }
+          ? { ...column, cardIds: [...column.cardIds, card.id] }
           : column
       );
       return {
         columns,
-        cards: { ...state.cards, [id]: newCard },
+        cards: { ...state.cards, [card.id]: card },
       };
     }
     case "DELETE_CARD": {
@@ -81,13 +86,25 @@ export function boardReducer(state: BoardState, action: BoardAction): BoardState
 interface BoardContextValue {
   state: BoardState;
   dispatch: React.Dispatch<BoardAction>;
+  loading: boolean;
 }
 
 const BoardContext = createContext<BoardContextValue | null>(null);
 
 export function BoardProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(boardReducer, seedBoard);
-  return <BoardContext.Provider value={{ state, dispatch }}>{children}</BoardContext.Provider>;
+  const [state, dispatch] = useReducer(boardReducer, emptyBoard);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getBoard().then((board) => {
+      dispatch({ type: "SET_BOARD", board });
+      setLoading(false);
+    });
+  }, []);
+
+  return (
+    <BoardContext.Provider value={{ state, dispatch, loading }}>{children}</BoardContext.Provider>
+  );
 }
 
 export function useBoard() {

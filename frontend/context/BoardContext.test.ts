@@ -56,21 +56,22 @@ describe("boardReducer", () => {
     expect(result.columns[2].cardIds).toEqual(["card-3"]);
   });
 
-  it("adds a new card to a column", () => {
-    const action: BoardAction = {
-      type: "ADD_CARD",
-      columnId: "col-3",
-      title: "New card",
-      details: "New details",
-    };
+  it("adds a server-confirmed card to a column", () => {
+    const card = { id: "card-9", title: "New card", details: "New details" };
+    const action: BoardAction = { type: "ADD_CARD", columnId: "col-3", card };
     const result = boardReducer(makeState(), action);
-    expect(result.columns[2].cardIds).toHaveLength(1);
-    const newCardId = result.columns[2].cardIds[0];
-    expect(result.cards[newCardId]).toEqual({
-      id: newCardId,
-      title: "New card",
-      details: "New details",
-    });
+    expect(result.columns[2].cardIds).toEqual(["card-9"]);
+    expect(result.cards["card-9"]).toEqual(card);
+  });
+
+  it("replaces the entire board on SET_BOARD", () => {
+    const board: BoardState = {
+      columns: [{ id: "col-9", title: "Fresh", cardIds: [] }],
+      cards: {},
+    };
+    const action: BoardAction = { type: "SET_BOARD", board };
+    const result = boardReducer(makeState(), action);
+    expect(result).toEqual(board);
   });
 
   it("deletes a card from its column", () => {

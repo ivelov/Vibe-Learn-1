@@ -14,11 +14,12 @@ async function dragCard(page: Page, cardText: string, targetText: string) {
   await page.mouse.up();
 }
 
-test("golden path: dummy data, drag, add, delete, rename", async ({ page }) => {
+test("golden path: persisted data, drag, add, delete, rename, reload", async ({ page }) => {
   await page.goto("/");
 
+  // Board now loads asynchronously from the API; wait for it explicitly.
   await expect(page.getByText("Kanban Board")).toBeVisible();
-  await expect(page.getByText("Backlog")).toBeVisible();
+  await expect(page.getByText("Backlog")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("To Do")).toBeVisible();
   await expect(page.getByText("In Progress")).toBeVisible();
   await expect(page.getByText("In Review")).toBeVisible();
@@ -38,6 +39,11 @@ test("golden path: dummy data, drag, add, delete, rename", async ({ page }) => {
   await page.getByRole("button", { name: "Add card", exact: true }).click();
   await expect(page.getByText("E2E added card")).toBeVisible();
 
+  // Persistence check: the moved card and the added card both survive a reload.
+  await page.reload();
+  await expect(page.getByText("E2E added card")).toBeVisible({ timeout: 10_000 });
+  await expect(toDoColumn.getByText("Research drag-and-drop libraries")).toBeVisible();
+
   await page.getByText("E2E added card").click();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.getByText("E2E added card")).toHaveCount(0);
@@ -46,4 +52,8 @@ test("golden path: dummy data, drag, add, delete, rename", async ({ page }) => {
   await page.locator("input").first().fill("Ideas");
   await page.keyboard.press("Enter");
   await expect(page.getByText("Ideas", { exact: true })).toBeVisible();
+
+  // Delete persists too.
+  await page.reload();
+  await expect(page.getByText("E2E added card")).toHaveCount(0);
 });
